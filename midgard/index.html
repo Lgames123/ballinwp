@@ -1,0 +1,973 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="description" content="Proposal: online-only, server-authoritative saves for MidgardSurvivors.">
+<title>Midgard Server Saves</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: technical proposal. Sticky contents rail on the left, one reading column, wide tables/code scroll in place. */
+:root {
+  --bg: #f4f5f8;
+  --surface: #ffffff;
+  --sunk: #eceef3;
+  --ink: #18202e;
+  --muted: #586276;
+  --line: #d9dde6;
+  --gold: #9a6f00;          /* Emperium gold, text-safe */
+  --gold-soft: #f7edd2;
+  --rune: #2d55c8;          /* links, client-side elements */
+  --rune-soft: #e3e9fb;
+  --crit: #b8322b;  --crit-soft: #fbe4e2;
+  --high: #b45f0e;  --high-soft: #fcebd9;
+  --med: #7a6a00;   --med-soft: #f5f0cf;
+  --ok: #24764d;    --ok-soft: #dcf1e5;
+  --code-bg: #f0f2f7;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  --radius: 8px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e131b; --surface: #151c27; --sunk: #1b2330; --ink: #e5e8ee; --muted: #9ba5b6; --line: #29334a;
+    --gold: #e2b955; --gold-soft: #3a2f13; --rune: #86a5ff; --rune-soft: #1f2a48;
+    --crit: #ff8a80; --crit-soft: #44201e; --high: #ffb066; --high-soft: #432b14;
+    --med: #e5d36a; --med-soft: #3a3514; --ok: #6fd3a0; --ok-soft: #173a2a; --code-bg: #111823;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e131b; --surface: #151c27; --sunk: #1b2330; --ink: #e5e8ee; --muted: #9ba5b6; --line: #29334a;
+  --gold: #e2b955; --gold-soft: #3a2f13; --rune: #86a5ff; --rune-soft: #1f2a48;
+  --crit: #ff8a80; --crit-soft: #44201e; --high: #ffb066; --high-soft: #432b14;
+  --med: #e5d36a; --med-soft: #3a3514; --ok: #6fd3a0; --ok-soft: #173a2a; --code-bg: #111823;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 15px/1.62 var(--f-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+a { color: var(--rune); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 3px; }
+h1, h2, h3, h4 { font-family: var(--f-display); line-height: 1.2; text-wrap: balance; margin: 0; }
+h2 { font-size: 1.6rem; letter-spacing: -0.01em; }
+h3 { font-size: 1.15rem; }
+h4 { font-size: 1rem; }
+p { margin: 0; max-width: 68ch; }
+code, kbd { font-family: var(--f-mono); font-size: 0.86em; }
+:not(pre) > code { background: var(--code-bg); border: 1px solid var(--line); padding: 0.05em 0.35em; border-radius: 4px; overflow-wrap: anywhere; }
+.ref { font-family: var(--f-mono); font-size: 0.8em; color: var(--muted); white-space: nowrap; }
+.eyebrow { font: 600 0.72rem/1 var(--f-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); }
+.muted { color: var(--muted); }
+
+/* Shell */
+.shell { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 48px; padding-block: 40px 96px; }
+.rail { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; max-height: calc(100vh - 48px); overflow-y: auto; }
+.rail nav { display: grid; gap: 2px; font-size: 0.88rem; }
+.rail a { color: var(--muted); text-decoration: none; padding: 5px 10px; border-radius: 6px; display: block; }
+.rail a:hover { color: var(--ink); background: var(--sunk); }
+.rail .grp { font: 600 0.68rem/1 var(--f-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); padding: 16px 10px 6px; }
+.mobile-toc { display: none; }
+main { min-width: 0; display: grid; gap: 72px; }
+section { display: grid; gap: 20px; scroll-margin-top: 24px; }
+section > header { display: grid; gap: 8px; }
+
+@media (max-width: 980px) {
+  .shell { grid-template-columns: minmax(0, 1fr); gap: 24px; padding-block: 24px 72px; }
+  .rail { display: none; }
+  .mobile-toc { display: block; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 10px 14px; }
+  .mobile-toc summary { cursor: pointer; font-weight: 600; }
+  .mobile-toc nav { display: grid; gap: 4px; padding-top: 8px; font-size: 0.9rem; }
+  main { gap: 56px; }
+}
+
+/* Hero */
+.hero { display: grid; gap: 18px; padding-bottom: 8px; border-bottom: 1px solid var(--line); padding-block-end: 32px; }
+.hero h1 { font-size: clamp(2rem, 4.6vw, 3.1rem); letter-spacing: -0.02em; max-width: 20ch; }
+.hero h1 em { font-style: normal; color: var(--gold); }
+.hero .lede { font-size: 1.08rem; color: var(--muted); max-width: 64ch; }
+.meta { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 0.84rem; color: var(--muted); }
+.meta b { color: var(--ink); font-weight: 600; }
+
+/* Summary strip */
+.tldr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+.tldr > div { background: var(--surface); padding: 18px; display: grid; gap: 6px; align-content: start; }
+.tldr h3 { font-size: 0.98rem; }
+.tldr p { font-size: 0.9rem; color: var(--muted); }
+@media (max-width: 720px) { .tldr { grid-template-columns: minmax(0, 1fr); } }
+
+/* Chips */
+.chip { display: inline-flex; align-items: center; gap: 5px; font: 600 0.7rem/1 var(--f-body); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.chip::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.c-crit { color: var(--crit); background: var(--crit-soft); }
+.c-high { color: var(--high); background: var(--high-soft); }
+.c-med  { color: var(--med);  background: var(--med-soft); }
+.c-ok   { color: var(--ok);   background: var(--ok-soft); }
+.c-info { color: var(--rune); background: var(--rune-soft); }
+
+/* Findings */
+.findings { display: grid; gap: 12px; }
+.finding { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 4px 14px; }
+.finding .id { font: 700 0.95rem/1.3 var(--f-mono); color: var(--muted); grid-row: span 3; }
+.finding .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.finding h3 { font-size: 1rem; }
+.finding p { font-size: 0.92rem; }
+.finding .where { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+@media (max-width: 520px) { .finding { grid-template-columns: minmax(0, 1fr); } .finding .id { grid-row: auto; } }
+
+/* Tables */
+.tbl { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 0.88rem; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font: 600 0.72rem/1.3 var(--f-body); letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); background: var(--sunk); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td code { white-space: nowrap; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* Pokebonk mechanism grid */
+.mech { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.mech article { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 8px; align-content: start; }
+.mech h3 { font-size: 0.98rem; }
+.mech p, .mech li { font-size: 0.9rem; }
+.mech ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+.mech .src { font: 0.76rem/1.4 var(--f-mono); color: var(--muted); }
+@media (max-width: 720px) { .mech { grid-template-columns: minmax(0, 1fr); } }
+
+.callout { border: 1px solid var(--line); border-left: 4px solid var(--gold); background: var(--gold-soft); border-radius: 6px; padding: 14px 16px; display: grid; gap: 6px; }
+.callout.warn { border-left-color: var(--crit); background: var(--crit-soft); }
+.callout p { font-size: 0.92rem; max-width: none; }
+
+/* Architecture */
+.arch { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.arch .col { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 10px; align-content: start; }
+.arch .col > h3 { display: flex; align-items: center; gap: 10px; }
+.node { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; background: var(--bg); display: grid; gap: 4px; }
+.node b { font-family: var(--f-display); font-size: 0.95rem; }
+.node span { font-size: 0.84rem; color: var(--muted); }
+.node.client { border-color: var(--rune); }
+.node.server { border-color: var(--gold); }
+.node.bad { border-color: var(--crit); border-style: dashed; }
+.arrow { text-align: center; font: 0.78rem/1.3 var(--f-mono); color: var(--muted); }
+.arrow::before { content: "↓"; display: block; font-size: 1.1rem; color: var(--ink); }
+@media (max-width: 720px) { .arch { grid-template-columns: minmax(0, 1fr); } }
+
+.split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.split > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 8px; align-content: start; }
+.split ul { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 0.9rem; }
+@media (max-width: 720px) { .split { grid-template-columns: minmax(0, 1fr); } }
+
+/* Sequence diagram */
+.seq-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.seq { min-width: 640px; display: grid; grid-template-columns: repeat(3, 1fr); row-gap: 6px; padding: 0 0 18px; position: relative;
+  background-image:
+    linear-gradient(var(--line), var(--line)), linear-gradient(var(--line), var(--line)), linear-gradient(var(--line), var(--line));
+  background-size: 1px 100%; background-repeat: no-repeat;
+  background-position: calc(100% / 6) 0, 50% 0, calc(500% / 6) 0; }
+.lane { text-align: center; padding: 12px 8px; position: sticky; top: 0; background: var(--sunk); border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.lane b { font-family: var(--f-display); font-size: 0.92rem; }
+.lane span { font-size: 0.74rem; color: var(--muted); }
+.phase { grid-column: 1 / -1; margin: 14px 12px 2px; font: 600 0.7rem/1 var(--f-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--gold); background: var(--surface); justify-self: start; padding: 4px 6px; position: relative; }
+.msg { position: relative; padding: 0 calc(100% / 6 / 1); display: grid; gap: 2px; z-index: 1; }
+.msg .lbl { font: 0.78rem/1.35 var(--f-mono); text-align: center; color: var(--ink); background: var(--surface); justify-self: center; padding: 0 6px; }
+.msg .lbl small { display: block; font-family: var(--f-body); color: var(--muted); font-size: 0.74rem; }
+.msg .ln { height: 2px; background: var(--rune); position: relative; margin-top: 2px; }
+.msg.srv .ln { background: var(--gold); }
+.msg .ln::after { content: ""; position: absolute; top: -5px; border: 6px solid transparent; }
+.msg.r .ln::after { right: -2px; border-left: 9px solid var(--rune); border-right: 0; }
+.msg.l .ln::after { left: -2px; border-right: 9px solid var(--rune); border-left: 0; }
+.msg.srv.r .ln::after { border-left-color: var(--gold); }
+.msg.srv.l .ln::after { border-right-color: var(--gold); }
+.c12 { grid-column: 1 / 3; } .c23 { grid-column: 2 / 4; } .c13 { grid-column: 1 / 4; }
+.msg.c12, .msg.c23 { padding: 0 25%; } .msg.c13 { padding: 0 calc(100% / 6); }
+.self { grid-column: 2 / 3; margin: 2px 12px; border: 1px dashed var(--gold); border-radius: 6px; padding: 6px 8px; background: var(--gold-soft); font-size: 0.78rem; text-align: center; position: relative; z-index: 1; }
+.self.c1 { grid-column: 1 / 2; border-color: var(--rune); background: var(--rune-soft); }
+
+/* Roadmap */
+.phases { display: grid; gap: 14px; counter-reset: ph; }
+.ph { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); display: grid; grid-template-columns: 120px minmax(0, 1fr); overflow: hidden; }
+.ph .tag { background: var(--sunk); padding: 16px; display: grid; align-content: start; gap: 6px; border-right: 1px solid var(--line); }
+.ph .tag b { font: 700 1.5rem/1 var(--f-display); color: var(--gold); }
+.ph .tag span { font-size: 0.78rem; color: var(--muted); }
+.ph .body { padding: 16px 18px; display: grid; gap: 10px; min-width: 0; }
+.ph ol { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 0.92rem; }
+.ph .done { font-size: 0.85rem; color: var(--muted); border-top: 1px dashed var(--line); padding-top: 8px; }
+.ph .done b { color: var(--ok); }
+@media (max-width: 620px) { .ph { grid-template-columns: minmax(0, 1fr); } .ph .tag { border-right: 0; border-bottom: 1px solid var(--line); grid-auto-flow: column; justify-content: start; align-items: baseline; gap: 12px; } }
+
+/* Code */
+.codebox { border: 1px solid var(--line); border-radius: var(--radius); background: var(--code-bg); overflow: hidden; min-width: 0; }
+.codebox .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--sunk); font: 0.78rem/1.3 var(--f-mono); color: var(--muted); }
+.codebox .bar a { color: var(--muted); }
+.codebox button { font: 600 0.74rem/1 var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 5px; padding: 6px 10px; cursor: pointer; }
+.codebox button:hover { border-color: var(--gold); }
+pre { margin: 0; padding: 14px 16px; overflow-x: auto; font: 0.8rem/1.6 var(--f-mono); tab-size: 4; }
+pre .cm { color: var(--muted); }
+pre .k { color: var(--rune); }
+pre .s { color: var(--ok); }
+pre .hl { background: var(--gold-soft); display: inline-block; width: 100%; }
+
+.files { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.files a.file { display: grid; gap: 4px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); text-decoration: none; color: var(--ink); }
+.files a.file:hover { border-color: var(--gold); }
+.files a.file b { font: 600 0.88rem/1.3 var(--f-mono); color: var(--rune); overflow-wrap: anywhere; }
+.files a.file span { font-size: 0.86rem; color: var(--muted); }
+@media (max-width: 720px) { .files { grid-template-columns: minmax(0, 1fr); } }
+
+.formula { font: 0.95rem/1.5 var(--f-mono); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; }
+.formula .r { color: var(--gold); font-weight: 600; }
+ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 70ch; }
+footer { border-top: 1px solid var(--line); padding-top: 20px; font-size: 0.84rem; color: var(--muted); display: grid; gap: 6px; }
+</style>
+</head>
+<body>
+
+<div class="shell">
+  <aside class="rail" aria-label="Contents">
+    <nav>
+      <a href="#top"><b>Midgard Server Saves</b></a>
+      <div class="grp">Why</div>
+      <a href="#summary">Summary</a>
+      <a href="#audit">Where things stand</a>
+      <a href="#pokebonk">What Pokébonk does</a>
+      <div class="grp">Design</div>
+      <a href="#architecture">Target architecture</a>
+      <a href="#lifecycle">Run lifecycle</a>
+      <a href="#api">API surface</a>
+      <a href="#data">Data model</a>
+      <a href="#validation">Run validation</a>
+      <div class="grp">Delivery</div>
+      <a href="#roadmap">Roadmap</a>
+      <a href="#migration">Migrating saves</a>
+      <a href="#ux">Online-only UX</a>
+      <a href="#coop">Co-op</a>
+      <a href="#risks">Trade-offs</a>
+      <a href="#code">Reference code</a>
+    </nav>
+  </aside>
+
+  <main id="top">
+    <header class="hero">
+      <span class="eyebrow">Security proposal · MidgardSurvivors 0.1.276</span>
+      <h1>Move progression to the server and make <em>every save online-only</em></h1>
+      <p class="lede">Today the game client owns the save file, computes its own rewards and posts its own records. This proposal moves all three behind an authenticated API, using the run-ticket model Pokébonk already runs in production, adapted to the Supabase project MidgardSurvivors already uses.</p>
+      <div class="meta">
+        <span><b>Audience:</b> MidgardSurvivors developer</span>
+        <span><b>Scope:</b> profile, economy, runs, leaderboards, patches</span>
+        <span><b>Stack:</b> Godot 4 client · Supabase (Auth, Postgres, Edge Functions)</span>
+      </div>
+      <details class="mobile-toc">
+        <summary>Contents</summary>
+        <nav>
+          <a href="#summary">Summary</a><a href="#audit">Where things stand</a><a href="#pokebonk">What Pokébonk does</a>
+          <a href="#architecture">Target architecture</a><a href="#lifecycle">Run lifecycle</a><a href="#api">API surface</a>
+          <a href="#data">Data model</a><a href="#validation">Run validation</a><a href="#roadmap">Roadmap</a>
+          <a href="#migration">Migrating saves</a><a href="#ux">Online-only UX</a><a href="#coop">Co-op</a>
+          <a href="#risks">Trade-offs</a><a href="#code">Reference code</a>
+        </nav>
+      </details>
+    </header>
+
+    <!-- ============================================================ SUMMARY -->
+    <section id="summary">
+      <header>
+        <span class="eyebrow">Summary</span>
+        <h2>The short version</h2>
+      </header>
+      <div class="tldr">
+        <div>
+          <h3>Problem</h3>
+          <p>Every trust decision happens on the player's machine. The save key, patch key and API key all ship inside the <code>.pck</code>, so saves, cloud uploads and leaderboard posts can be forged with a text editor and one HTTP call.</p>
+        </div>
+        <div>
+          <h3>Proposal</h3>
+          <p>The server owns the profile. The client asks for a <b>run ticket</b>, sends <b>checkpoints</b> while playing, and sends a <b>result</b> at the end. The server validates it, grants rewards and writes the leaderboard. Spending is done through server commands.</p>
+        </div>
+        <div>
+          <h3>Cost</h3>
+          <p>One Edge Function, ~10 tables, one new Godot autoload, and changes at the places that write <code>Save</code> today. No change to combat code, no extra latency during a run. Six phases that ship independently.</p>
+        </div>
+      </div>
+      <div class="callout">
+        <p><b>What "server authoritative" means here.</b> Combat keeps running on the client, as it does in Pokébonk. The server becomes authoritative over everything that persists: currencies, cards, equipment, unlocks, class levels, records and rankings. Combat results are <em>validated</em> against server-side rules and the server's own copy of the loadout instead of being trusted. Full server re-simulation is out of scope, because the simulation is not deterministic (identical seeds still vary by about 5–7% between bench runs).</p>
+      </div>
+    </section>
+
+    <!-- ============================================================== AUDIT -->
+    <section id="audit">
+      <header>
+        <span class="eyebrow">Where things stand</span>
+        <h2>Current trust model, from the shipped build</h2>
+        <p class="muted">Paths use the project layout (<code>scripts/autoload</code>, <code>scripts/core</code>). Line numbers come from the 0.1.276 build and may be a few lines off from the editor sources. Key values are intentionally not reproduced here.</p>
+      </header>
+
+      <div class="findings">
+        <article class="finding">
+          <span class="id">F1</span>
+          <div class="top"><span class="chip c-crit">Critical</span><h3>The save file is the source of truth, and the client holds its key</h3></div>
+          <p><code>Save.flush()</code> writes <code>user://profile.json</code> with <code>open_encrypted_with_pass(…, SAVE_KEY)</code>, and <code>SAVE_KEY</code> is a string constant. Anyone who unpacks the <code>.pck</code> can decrypt, edit (zeny, cards, refines, class stats, tower builds) and re-encrypt the profile, and the game accepts the result as real progress.</p>
+          <div class="where"><span class="ref">scripts/autoload/save.gd:144</span><span class="ref">save.gd:147 _read</span><span class="ref">save.gd:206 flush</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F2</span>
+          <div class="top"><span class="chip c-crit">Critical</span><h3>Cloud save stores whatever the client uploads</h3></div>
+          <p><code>CloudSave.pack()</code> AES-encrypts the profile with a key derived from the same <code>SAVE_KEY</code>, and <code>cloud_put</code> stores the blob. The server cannot read or check it, so an edited local save becomes the cloud save on the next sync. The conflict dialog's "use this device" button calls <code>_push(-1)</code>, which overwrites the cloud copy without a revision check.</p>
+          <div class="where"><span class="ref">scripts/core/cloud_save.gd:136 _key</span><span class="ref">cloud_save.gd:140 pack</span><span class="ref">cloud_save.gd:378 _push</span><span class="ref">cloud_save.gd:513</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F3</span>
+          <div class="top"><span class="chip c-crit">Critical</span><h3>Leaderboard writes are unauthenticated</h3></div>
+          <p>The player's identity is <code>player_id</code>, 12 random bytes kept in the save settings. <code>submit_record</code>, <code>submit_festival</code>, <code>submit_tower</code> and <code>rename_player</code> are Supabase RPCs called with the publishable key and that id, and they accept the score as a parameter. Anyone can post any score, for any class, under any id, without running the game.</p>
+          <div class="where"><span class="ref">scripts/core/leaderboard.gd:28 player_id</span><span class="ref">:60 submit_festival</span><span class="ref">:203 submit</span><span class="ref">:240 submit_tower</span><span class="ref">:258 rename</span><span class="ref">:274 _call</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F4</span>
+          <div class="top"><span class="chip c-high">High</span><h3>Rewards are computed by the client</h3></div>
+          <p><code>World._end_run</code> and <code>_bank_run</code> add zeny, ores, class XP, kills and records straight into <code>Save</code>. Any memory edit during a run (or a patched script) turns into permanent progression, and nothing on the server knows how much a run should have paid.</p>
+          <div class="where"><span class="ref">scripts/core/main.gd:13935 _end_run</span><span class="ref">main.gd:14206 _bank_run</span><span class="ref">save.gd:306 add_zeny</span><span class="ref">save.gd:644 add_class_xp</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F5</span>
+          <div class="top"><span class="chip c-high">High</span><h3>The mid-run save is plain text and fully trusted on resume</h3></div>
+          <p><code>RunSave.save</code> writes <code>user://profile.run</code> with <code>var_to_str</code>, unencrypted. <code>resume</code> → <code>apply_hero</code> rebuilds the hero from it, including stats, skills and gear, so editing that file edits the hero.</p>
+          <div class="where"><span class="ref">scripts/core/run_save.gd:42 save</span><span class="ref">run_save.gd:141 resume</span><span class="ref">run_save.gd:170 apply_hero</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F6</span>
+          <div class="top"><span class="chip c-high">High</span><h3>Anti-tamper checks run on the client and only gate the client</h3></div>
+          <p><code>Leaderboard.enabled()</code> turns submissions off when the process has <code>--</code> arguments, and <code>player.tampered</code> (an HP seal) only skips <code>board.submit</code>. Both are client-side branches; a direct RPC call never reaches them. The seal also covers HP only, not damage, stats or zeny.</p>
+          <div class="where"><span class="ref">leaderboard.gd:41 enabled</span><span class="ref">scripts/core/player.gd:64–86 seal</span><span class="ref">main.gd:13994</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F7</span>
+          <div class="top"><span class="chip c-high">High</span><h3>TLS failure falls back to an unverified connection</h3></div>
+          <p>After a TLS handshake error, <code>Leaderboard._call</code> sets <code>_unsafe</code> and retries with <code>TLSOptions.client_unsafe()</code>. A proxy that presents a bad certificate is accepted on the retry, which lets it read and rewrite every request, cloud saves included.</p>
+          <div class="where"><span class="ref">leaderboard.gd:271 _unsafe</span><span class="ref">leaderboard.gd:282–284</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F8</span>
+          <div class="top"><span class="chip c-med">Medium</span><h3>Patches are encrypted but not signed</h3></div>
+          <p>The updater decrypts downloaded <code>.pck</code> parts with <code>PATCH_KEY</code>, a client constant. That gives confidentiality only. A compromised mirror (the manifest has a GitHub fallback) could serve a valid-looking patch. The game already ships RSA verification for developer messages, so signing patches is cheap.</p>
+          <div class="where"><span class="ref">scripts/autoload/updater.gd:49–55</span><span class="ref">updater.gd:413 _decrypt</span><span class="ref">save.gd:1227 dev_verify</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F9</span>
+          <div class="top"><span class="chip c-med">Medium</span><h3>Festival scores saturate at 9×10<sup>18</sup></h3></div>
+          <p><code>Leaderboard.big()</code> clamps every number to <code>BIG_MAX = 9e18</code>. Festival damage passes 10<sup>19</sup> at around 100 Emperiums, so the stored damage of every top entry is the same value. Rankings work only through <code>checks</code>, and the server has nothing to cross-check them with.</p>
+          <div class="where"><span class="ref">leaderboard.gd:382 BIG_MAX</span><span class="ref">leaderboard.gd:385 big</span><span class="ref">scripts/core/festival_run.gd:446</span></div>
+        </article>
+
+        <article class="finding">
+          <span class="id">F10</span>
+          <div class="top"><span class="chip c-ok">Good base</span><h3>The pieces needed for validation already exist</h3></div>
+          <p><code>log_run_metrics</code> already sends level, kills, zeny, gear, cards, pacts, damage sources and max hit at the end of every run. <code>claim_festival_daily</code> is already a server-side claim. The Supabase project, RPC plumbing and the account flow (register, login, security questions) are in place. This proposal reuses them instead of starting over.</p>
+          <div class="where"><span class="ref">leaderboard.gd:297 log_run</span><span class="ref">leaderboard.gd:335 metrics_of</span><span class="ref">leaderboard.gd:78 claim_festival_daily</span><span class="ref">cloud_save.gd:272 register</span></div>
+        </article>
+      </div>
+    </section>
+
+    <!-- =========================================================== POKEBONK -->
+    <section id="pokebonk">
+      <header>
+        <span class="eyebrow">Reference</span>
+        <h2>What Pokébonk does, and what to copy</h2>
+        <p class="muted">Pokébonk is a browser survivors-like with the same problem: the simulation runs in the client. Everything below is visible in its public client bundle and API responses.</p>
+      </header>
+
+      <div class="mech">
+        <article>
+          <h3>Accounts before anything else</h3>
+          <ul>
+            <li>Guest accounts are created server-side (<code>POST /auth/guest</code>) behind a Cloudflare Turnstile check, then upgraded to a named account with the same id (<code>/auth/upgrade</code>).</li>
+            <li>Every call carries <code>Authorization: Bearer</code>, a per-install <code>X-Device</code> id and the <code>X-Client</code> version.</li>
+            <li>The server answers <code>426</code> for outdated clients, <code>403 {banned}</code> for bans and <code>503 {maintenance}</code> during deploys.</li>
+          </ul>
+          <span class="src">main-*.js · req(), guest(), register(), upgradeGuest()</span>
+        </article>
+        <article>
+          <h3>The profile lives on the server</h3>
+          <ul>
+            <li><code>GET /profile</code> returns the full profile plus the server's <code>now</code>, which the client uses to measure clock skew.</li>
+            <li>The only thing the client may write directly is <code>PUT /profile/prefs</code>, a whitelist of cosmetic fields (settings, avatar, team, skins).</li>
+          </ul>
+          <span class="src">loadProfile(), savePrefs()</span>
+        </article>
+        <article>
+          <h3>Spending is a command</h3>
+          <ul>
+            <li>Each purchase is its own endpoint: <code>/lab/buy</code>, <code>/items/buy</code>, <code>/shop/buy</code>, <code>/quests/claim</code>, <code>/tasks/claim</code>, <code>/treasures/spin</code>.</li>
+            <li>Smaller toggles are batched into <code>POST /profile/actions</code>. Every response returns the new profile.</li>
+          </ul>
+          <span class="src">buyLab(), buyShop(), claimTask(), actions()</span>
+        </article>
+        <article>
+          <h3>Runs are tickets</h3>
+          <ul>
+            <li><code>POST /runs</code> with a client idempotency <code>key</code> returns <code>{id, seed, ranked, targets}</code>. Retries reuse the key.</li>
+            <li>If the server cannot be reached after three tries, the run is local, unranked and <em>"progress is not saved"</em>.</li>
+          </ul>
+          <span class="src">startRun() → {id:'', ranked:false, offline:true}</span>
+        </article>
+        <article>
+          <h3>Heartbeat checkpoints</h3>
+          <ul>
+            <li>Every 60 s of game time, and on boss kills, stage changes and tower floors, the client queues <code>{t, stage, kills, level, damage, splits}</code>.</li>
+            <li>Queued checkpoints are posted in batches of up to 300 to <code>/runs/:id/checkpoint</code>.</li>
+          </ul>
+          <span class="src">checkpoint(), flushCps(), heartbeat:60</span>
+        </article>
+        <article>
+          <h3>Finish, with a durable queue</h3>
+          <ul>
+            <li><code>POST /runs/:id/finish {result, cps}</code> returns the rewards and the updated profile. The server computes rewards; the client never sends a currency amount.</li>
+            <li>The result is stored locally first (<code>pb.pending</code>) and resent with exponential backoff. <code>409</code> means "already saved" and counts as success.</li>
+          </ul>
+          <span class="src">finishRun(), flushPending(), retryLater()</span>
+        </article>
+        <article>
+          <h3>Pause and continue anywhere</h3>
+          <ul>
+            <li><code>/runs/:id/save</code> stores a gzip snapshot with a hash. <code>/suspend</code>, <code>/resume</code> and <code>/recover</code> move a run between devices.</li>
+            <li>A browser lock and a heartbeat in local storage stop the same run from being played in two tabs.</li>
+          </ul>
+          <span class="src">uploadSave(), suspendRun(), resumeRun()</span>
+        </article>
+        <article>
+          <h3>Server-side rules and bans</h3>
+          <ul>
+            <li>Rules include <code>speed</code>, <code>kill-impossible</code>, <code>burst</code>, <code>level-impossible</code>, <code>gold-impossible</code>, <code>checkpoints-missing</code>, <code>counters-forged</code>, <code>result-forged</code> and <code>result-repeat</code>.</li>
+            <li>Two flagged runs in 7 days trigger a 30-day ban. Podium runs (top 3 per map, top 10 global) get extra review. Device farms and parallel runs are tracked.</li>
+          </ul>
+          <span class="src">autoBan {runs:2, days:7, ban:30}, podium, deviceFarm</span>
+        </article>
+      </div>
+
+      <div class="callout warn">
+        <p><b>Do not copy Pokébonk's mistake: its thresholds ship to the client.</b> The full rule table (<code>heartbeat</code>, <code>maxGap</code>, <code>killSlack</code>, <code>burstPerSec</code>, <code>autoBan</code> …) sits in a shared module of the public bundle. Third-party tools can read it and keep every value just under each limit, for example by reporting a movement speed slightly below the <code>speed</code> rule while the real one is higher. In MidgardSurvivors the rule values must live only in the Edge Function, and the client should receive nothing more specific than "rejected".</p>
+      </div>
+    </section>
+
+    <!-- ======================================================= ARCHITECTURE -->
+    <section id="architecture">
+      <header>
+        <span class="eyebrow">Design</span>
+        <h2>Target architecture</h2>
+      </header>
+
+      <div class="arch">
+        <div class="col">
+          <h3><span class="chip c-crit">Today</span></h3>
+          <div class="node client"><b>Game client</b><span>Simulates the run, computes rewards, writes <code>profile.json</code>, decides if a run is tampered.</span></div>
+          <div class="arrow">encrypted blob · any score · any player_id</div>
+          <div class="node bad"><b>Supabase RPCs (publishable key)</b><span><code>cloud_put</code>, <code>submit_record</code>, <code>submit_festival</code>, <code>rename_player</code>. No caller identity, no validation.</span></div>
+          <div class="arrow">stored as sent</div>
+          <div class="node"><b>Postgres</b><span>Opaque save blobs and leaderboard rows.</span></div>
+        </div>
+        <div class="col">
+          <h3><span class="chip c-ok">Proposed</span></h3>
+          <div class="node client"><b>Game client</b><span>Simulates the run, renders, holds a read-only cache of the profile. Sends intents, checkpoints and results.</span></div>
+          <div class="arrow">Bearer JWT · X-Device · X-Client</div>
+          <div class="node server"><b>Edge Function <code>api</code></b><span>Authenticates, enforces the minimum version, issues run tickets, validates runs with server-only rules, computes rewards, applies commands.</span></div>
+          <div class="arrow">service role, one transaction per change</div>
+          <div class="node server"><b>Postgres with RLS</b><span>Profiles, append-only ledger, runs, checkpoints, boards, flags. Clients can read their own rows and write none.</span></div>
+        </div>
+      </div>
+
+      <div class="split">
+        <div>
+          <h3>The client still decides</h3>
+          <ul>
+            <li>Input, movement, combat simulation, rendering</li>
+            <li>Device settings (<code>CloudSave.DEVICE_KEYS</code>)</li>
+            <li>Which upgrade to pick at level-up (inside the run)</li>
+            <li>Cosmetics and looks, sent as preferences</li>
+          </ul>
+        </div>
+        <div>
+          <h3>The server decides</h3>
+          <ul>
+            <li>Zeny, coins, materials, cards, equipment, refines</li>
+            <li>Class unlocks, class XP and levels, stat points, rebirths</li>
+            <li>What loadout a run starts with, and the run seed</li>
+            <li>Rewards, records, achievements, daily claims, every board row</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== LIFECYCLE -->
+    <section id="lifecycle">
+      <header>
+        <span class="eyebrow">Design</span>
+        <h2>Run lifecycle</h2>
+        <p class="muted">Three network moments per run: start, a heartbeat every 60 s of game time, and finish. Nothing waits on the network during combat.</p>
+      </header>
+      <div class="seq-wrap" role="img" aria-label="Sequence diagram: the client requests a run ticket, sends checkpoints, and finishes; the API validates and writes to the database.">
+        <div class="seq">
+          <div class="lane"><b>Game client</b><span>Godot · autoload Api</span></div>
+          <div class="lane"><b>API</b><span>Edge Function</span></div>
+          <div class="lane"><b>Database</b><span>Postgres + RLS</span></div>
+
+          <div class="phase">Boot</div>
+          <div class="msg r c12"><span class="lbl">refresh or anonymous sign-in<small>Supabase Auth, JWT kept in user://session.dat</small></span><div class="ln"></div></div>
+          <div class="msg r c12"><span class="lbl">GET /profile</span><div class="ln"></div></div>
+          <div class="msg srv l c12"><span class="lbl">{profile, rev, now}<small>Save.data becomes this, read-only</small></span><div class="ln"></div></div>
+
+          <div class="phase">Start</div>
+          <div class="msg r c12"><span class="lbl">POST /runs {key, mode, class, stage, danger}</span><div class="ln"></div></div>
+          <div class="self">check unlocks, snapshot loadout from profile, pick seed</div>
+          <div class="msg srv r c23"><span class="lbl">insert runs</span><div class="ln"></div></div>
+          <div class="msg srv l c12"><span class="lbl">{id, seed, loadout, ranked}<small>hero is built from this loadout</small></span><div class="ln"></div></div>
+
+          <div class="phase">Play</div>
+          <div class="self c1">every 60 s of game time, boss kill, Emperium break</div>
+          <div class="msg r c12"><span class="lbl">POST /runs/:id/checkpoint {cps[≤300]}</span><div class="ln"></div></div>
+          <div class="msg srv r c23"><span class="lbl">insert run_checkpoints (server_at = now)</span><div class="ln"></div></div>
+
+          <div class="phase">Finish</div>
+          <div class="self c1">queue result locally first</div>
+          <div class="msg r c12"><span class="lbl">POST /runs/:id/finish {result, cps}</span><div class="ln"></div></div>
+          <div class="self">validate · compute rewards · decide ranked</div>
+          <div class="msg srv r c23"><span class="lbl">profile + ledger + board_entries (one tx)</span><div class="ln"></div></div>
+          <div class="msg srv l c12"><span class="lbl">{rewards, profile, rev} · 409 if already saved</span><div class="ln"></div></div>
+        </div>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Run state</th><th>Entered when</th><th>Leaves when</th></tr></thead>
+          <tbody>
+            <tr><td><code>active</code></td><td><code>POST /runs</code></td><td>finish, suspend, or 4 h without finish (→ <code>expired</code>)</td></tr>
+            <tr><td><code>suspended</code></td><td>player quits to menu mid-run (snapshot stored server-side)</td><td><code>resume</code> on any device, or 14 days</td></tr>
+            <tr><td><code>finished</code></td><td>validator accepted; rewards applied</td><td>final. Repeated finish returns <code>409</code> with the same rewards</td></tr>
+            <tr><td><code>rejected</code></td><td>a reject-severity rule fired</td><td>final. Counts toward auto-ban</td></tr>
+            <tr><td><code>expired</code></td><td>TTL passed with no finish</td><td>final. A queued finish may still land within the 48 h grace window</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ================================================================ API -->
+    <section id="api">
+      <header>
+        <span class="eyebrow">Design</span>
+        <h2>API surface</h2>
+        <p class="muted">One Edge Function with a small router. Every route requires the user's JWT; there is no route that accepts a <code>player_id</code> as identity.</p>
+      </header>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Route</th><th>Purpose</th><th>Replaces today</th></tr></thead>
+          <tbody>
+            <tr><td><code>GET /profile</code></td><td>Authoritative profile, <code>rev</code>, server time</td><td><code>Save.load_profile</code>, <code>cloud_get</code></td></tr>
+            <tr><td><code>PUT /prefs</code></td><td>Whitelisted device and cosmetic settings</td><td>settings inside <code>cloud_put</code></td></tr>
+            <tr><td><code>POST /profile/actions</code></td><td>Batched commands with idempotency key and <code>if_rev</code></td><td><code>Save.spend</code>, <code>fuse_card</code>, <code>set_eternal</code>, <code>unlock_class</code>, <code>toggle_pact</code>, <code>claim_achievement</code> …</td></tr>
+            <tr><td><code>POST /runs</code></td><td>Issue ticket: id, seed, loadout, ranked</td><td><code>World.start_run</code> reading <code>Save</code> directly</td></tr>
+            <tr><td><code>POST /runs/:id/checkpoint</code></td><td>Heartbeat batch (≤300)</td><td>nothing (new)</td></tr>
+            <tr><td><code>PUT /runs/:id/snapshot</code></td><td>Mid-run save, gzip + sha256</td><td><code>RunSave.save</code> → <code>user://profile.run</code></td></tr>
+            <tr><td><code>POST /runs/:id/suspend · /resume</code></td><td>Continue on another device</td><td><code>RunSave.resume</code></td></tr>
+            <tr><td><code>POST /runs/:id/finish</code></td><td>Validate, reward, write boards</td><td><code>_bank_run</code>, <code>add_zeny</code>, <code>submit</code>, <code>submit_tower</code>, <code>submit_festival</code></td></tr>
+            <tr><td><code>GET /boards?board=&amp;season=</code></td><td>Public read from <code>board_public</code></td><td><code>month_board</code>, <code>my_ranks</code></td></tr>
+            <tr><td><code>POST /account/upgrade · /login · /recover</code></td><td>Name and password on top of the anonymous account</td><td><code>cloud_register</code>, <code>cloud_login</code>, <code>cloud_recover</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Status</th><th>Meaning</th><th>Client reaction</th></tr></thead>
+          <tbody>
+            <tr><td class="num">401</td><td>Token expired or invalid</td><td>refresh once, then show login</td></tr>
+            <tr><td class="num">403</td><td><code>{banned:{until, reason}}</code></td><td>ban screen; menus still open</td></tr>
+            <tr><td class="num">409</td><td>stale <code>if_rev</code>, or run already finished</td><td>adopt the returned profile; treat finish as saved</td></tr>
+            <tr><td class="num">422</td><td>command refused (not enough zeny, locked) or run rejected</td><td>show a generic message; no rule names</td></tr>
+            <tr><td class="num">426</td><td>client older than <code>MIN_CLIENT</code></td><td>open the updater window</td></tr>
+            <tr><td class="num">5xx / offline</td><td>server or network problem</td><td>keep the finish in the queue and retry with backoff</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="codebox">
+        <div class="bar"><a href="/midgard/code/supabase/functions/api/index.ts">functions/api/index.ts</a><button type="button" data-copy="c-finish">Copy</button></div>
+<pre id="c-finish"><span class="k">async function</span> finish(c: Ctx, runId: <span class="k">string</span>, body: { result; cps? }) {
+  <span class="k">const</span> { data: run } = <span class="k">await</span> db.from(<span class="s">"runs"</span>).select(<span class="s">"*"</span>).eq(<span class="s">"id"</span>, runId).single();
+  <span class="k">if</span> (!run || run.account_id !== c.uid) <span class="k">return</span> json(404, { error: <span class="s">"run"</span> });
+  <span class="k">if</span> (run.status === <span class="s">"finished"</span>) <span class="k">return</span> json(409, { error: <span class="s">"already_saved"</span>, rewards: run.rewards });
+
+  <span class="k">const</span> verdict = <span class="k">await</span> validateRun(db, { run, checkpoints, result: body.result, now: c.now });
+  <span class="k">if</span> (verdict.reject) <span class="k">return</span> json(422, { error: <span class="s">"rejected"</span> });   <span class="cm">// never say which rule fired</span>
+
+<span class="hl">  <span class="cm">// Rewards come from validated, clamped telemetry. No client field is copied into the profile.</span></span>
+<span class="hl">  <span class="k">const</span> rewards = computeRewards(state, run, body.result, verdict);</span>
+  <span class="k">const</span> rev = <span class="k">await</span> commit(c.uid, p.rev, state, <span class="s">"run"</span>, runId, rewards.delta);
+  <span class="k">if</span> (verdict.ranked) <span class="k">await</span> writeBoards(c.uid, run, body.result, verdict);
+  <span class="k">return</span> json(200, { rewards: rewards.delta, profile: state, rev });
+}</pre>
+      </div>
+    </section>
+
+    <!-- =============================================================== DATA -->
+    <section id="data">
+      <header>
+        <span class="eyebrow">Design</span>
+        <h2>Data model</h2>
+        <p class="muted">RLS is on for every table, with read-own policies only. With no insert or update policy, the publishable key cannot write anything. Full DDL in <a href="/midgard/code/supabase/001_schema.sql">001_schema.sql</a>.</p>
+      </header>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Table</th><th>Holds</th><th>Client access</th></tr></thead>
+          <tbody>
+            <tr><td><code>accounts</code></td><td>name, legacy <code>player_id</code>, trust, ban, shadow flag</td><td>read own</td></tr>
+            <tr><td><code>profiles</code></td><td>the old <code>Save.data</code> minus device keys, with <code>rev</code> and origin (fresh / legacy verified / quarantined)</td><td>read own</td></tr>
+            <tr><td><code>ledger</code></td><td>append-only deltas with source (run, action, daily, admin, migration)</td><td>read own</td></tr>
+            <tr><td><code>runs</code></td><td>ticket, seed, loadout snapshot, status, result, rewards, flags</td><td>read own</td></tr>
+            <tr><td><code>run_secrets</code></td><td>per-run loot key (phase 6)</td><td>none</td></tr>
+            <tr><td><code>run_checkpoints</code></td><td>heartbeats with the server's receive time</td><td>none</td></tr>
+            <tr><td><code>run_snapshots</code></td><td>mid-run save (gzip + hash)</td><td>none (served by the API)</td></tr>
+            <tr><td><code>board_entries</code></td><td>best run per board, season, account and class</td><td>through the <code>board_public</code> view</td></tr>
+            <tr><td><code>flags</code></td><td>rule hits awaiting review, with verdict</td><td>none</td></tr>
+            <tr><td><code>devices</code>, <code>action_keys</code></td><td>device signals; idempotent command responses</td><td>none</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>The ledger makes every balance explainable. Support can answer "where did these 40 M zeny come from" with one query, a bad patch can be refunded by inserting <code>refund</code> rows, and a confirmed cheater's gains can be reversed without touching anyone else.</p>
+    </section>
+
+    <!-- ========================================================= VALIDATION -->
+    <section id="validation">
+      <header>
+        <span class="eyebrow">Design</span>
+        <h2>Run validation</h2>
+        <p class="muted">Five rule families, all server-side. Start every new rule at <span class="chip c-info">review</span> severity, measure it against real runs for two weeks, then promote it.</p>
+      </header>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Family</th><th>Rule</th><th>Signal</th><th>Start as</th></tr></thead>
+          <tbody>
+            <tr><td>Timing</td><td><code>speed</code></td><td>game time &gt; wall time × legal speed multiplier + slack</td><td><span class="chip c-crit">reject</span></td></tr>
+            <tr><td></td><td><code>clock</code></td><td>a checkpoint's <code>t</code> is ahead of its <code>server_at</code></td><td><span class="chip c-crit">reject</span></td></tr>
+            <tr><td></td><td><code>checkpoints-missing</code></td><td>gap &gt; 180 s of game time between heartbeats</td><td><span class="chip c-info">review</span></td></tr>
+            <tr><td>Monotonic</td><td><code>counters-forged</code></td><td>kills, level, mvps, zeny or checks decrease between checkpoints</td><td><span class="chip c-crit">reject</span></td></tr>
+            <tr><td>Plausibility</td><td><code>kill-impossible</code></td><td>kills per minute above the p99.9 for stage and danger</td><td><span class="chip c-info">review</span></td></tr>
+            <tr><td></td><td><code>level-impossible</code></td><td>levels per minute above the curve from <code>xp_need</code> and danger XP</td><td><span class="chip c-info">review</span></td></tr>
+            <tr><td></td><td><code>gold-impossible</code></td><td><code>run_zeny</code> above kills × max drop × danger</td><td><span class="chip c-info">review</span></td></tr>
+            <tr><td></td><td><code>burst</code></td><td>Festival DPS between two breaks jumps by more than ×50</td><td><span class="chip c-info">review</span></td></tr>
+            <tr><td>Consistency</td><td><code>loadout-mismatch</code></td><td>gear, refine, cards, pet or pacts differ from the ticket's loadout</td><td><span class="chip c-crit">reject</span></td></tr>
+            <tr><td></td><td><code>result-forged</code></td><td>result below the last checkpoint, or Festival damage below the HP ladder</td><td><span class="chip c-crit">reject</span></td></tr>
+            <tr><td>History</td><td><code>parallel</code></td><td>two solo runs overlapping on one account</td><td><span class="chip c-info">review</span></td></tr>
+            <tr><td></td><td><code>result-repeat</code></td><td>identical kills and time already submitted within 7 days</td><td><span class="chip c-crit">reject</span></td></tr>
+            <tr><td></td><td><code>device-farm</code></td><td>one device id across many accounts</td><td><span class="chip c-info">review</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Festival: a rule that uses the game's own numbers</h3>
+      <p>Emperium <i>k</i> spawns with <code>max_hp = FESTIVAL_BASE_HP × FESTIVAL_GROW<sup>k</sup></code> (<span class="ref">festival_run.gd:396</span>, constants at <span class="ref">game_data.gd:176–177</span>: 6000 and 1.4). Breaking <i>n</i> of them therefore needs a known minimum of banked damage, and the 60 s window (<code>FESTIVAL_TIME</code>) gives a minimum sustained DPS.</p>
+      <div class="formula">min_damage(n) = 6000 × (1.4<sup>n</sup> − 1) / 0.4<br>
+        n = 100 → <span class="r">6.2 × 10<sup>18</sup></span> &nbsp;·&nbsp; n = 131 → <span class="r">2.1 × 10<sup>23</sup></span> &nbsp;·&nbsp; n = 147 → <span class="r">4.5 × 10<sup>25</sup></span> (≈ 7.6 × 10<sup>23</sup> DPS over 60 s)</div>
+      <ul class="plain">
+        <li>The client sends a checkpoint at each break (<span class="ref">festival_run.gd:417</span> <code>checks += 1</code>) with the banked damage. Fewer logged breaks than claimed <code>checks</code> is a reject.</li>
+        <li>The time between breaks gives a DPS curve. A legitimate build ramps smoothly; an injected score jumps.</li>
+        <li>Send damage as a float or as <code>log10</code>, not through <code>big()</code>, so top entries stop collapsing to the 9×10<sup>18</sup> cap (F9).</li>
+        <li>Podium entries (top 3 per class, top 10 overall) go to <code>pending_review</code> before they appear on the public board, as Pokébonk does with its podium rule.</li>
+      </ul>
+
+      <div class="codebox">
+        <div class="bar"><a href="/midgard/code/supabase/functions/api/validator.ts">functions/api/validator.ts</a><button type="button" data-copy="c-fest">Copy</button></div>
+<pre id="c-fest"><span class="k">function</span> festival(ctx: RunContext, add) {
+  <span class="k">const</span> n = Number(ctx.result.checks ?? 0);
+  <span class="k">const</span> banked = Number(ctx.result.dmg ?? 0);
+  <span class="k">const</span> minDmg = (GD.FESTIVAL_BASE_HP * (Math.pow(GD.FESTIVAL_GROW, n) - 1)) / (GD.FESTIVAL_GROW - 1);
+  <span class="k">if</span> (banked + 1 &lt; minDmg * 0.999) add(<span class="s">"result-forged"</span>, <span class="s">"reject"</span>, { n, banked, minDmg });
+
+  <span class="k">const</span> breaks = ctx.checkpoints.filter((c) =&gt; c.payload.kind === <span class="s">"check"</span>);
+  <span class="k">if</span> (breaks.length &lt; n) add(<span class="s">"checkpoints-missing"</span>, <span class="s">"reject"</span>, { logged: breaks.length, claimed: n });
+  <span class="cm">// ... DPS between consecutive breaks, window length ≤ FESTIVAL_TIME + 2 s</span>
+}</pre>
+      </div>
+
+      <h3>Enforcement ladder</h3>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Severity</th><th>Effect on the run</th><th>Effect on the account</th></tr></thead>
+          <tbody>
+            <tr><td><span class="chip c-info">info</span></td><td>none, logged for tuning</td><td>none</td></tr>
+            <tr><td><span class="chip c-info">review</span></td><td>rewards granted, run unranked until reviewed</td><td>none</td></tr>
+            <tr><td><span class="chip c-crit">reject</span></td><td>no rewards, no board row, generic error</td><td>2 rejects in 7 days → shadow flag (hidden from boards)</td></tr>
+            <tr><td><span class="chip c-crit">ban</span></td><td>—</td><td>only after a human confirms; 30 days, then permanent on repeat</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ============================================================ ROADMAP -->
+    <section id="roadmap">
+      <header>
+        <span class="eyebrow">Delivery</span>
+        <h2>Roadmap</h2>
+        <p class="muted">Each phase ships on its own and leaves the game playable. Phases 0–2 already stop the cheapest attacks.</p>
+      </header>
+      <div class="phases">
+        <article class="ph">
+          <div class="tag"><b>0</b><span>Quick hardening</span></div>
+          <div class="body">
+            <h3>Close the open doors</h3>
+            <ol>
+              <li>Remove the <code>client_unsafe()</code> TLS fallback in <code>Leaderboard._call</code> (F7).</li>
+              <li>Sign the patch manifest and every <code>.pck</code> with a private key kept off the build machine; verify with an embedded public key before <code>_decrypt</code> (F8). <code>Crypto.verify</code> is already used by <code>Save.dev_verify</code>.</li>
+              <li>Add a server-side minimum version: every RPC compares <code>p_version</code> and refuses older clients.</li>
+              <li>Clamp obviously impossible values inside the existing <code>submit_*</code> SQL functions (score ceilings per class and stage) while the rest is built.</li>
+            </ol>
+            <p class="done"><b>Done when</b> a proxy with a self-signed certificate gets no traffic, and an unsigned patch is refused.</p>
+          </div>
+        </article>
+
+        <article class="ph">
+          <div class="tag"><b>1</b><span>Accounts</span></div>
+          <div class="body">
+            <h3>Real identity on every request</h3>
+            <ol>
+              <li>Enable Supabase anonymous sign-ins. First launch creates an anonymous user; the existing register/login/security-questions flow upgrades it to a named one with the same id.</li>
+              <li>Add the <code>Api</code> autoload (<a href="/midgard/code/godot/api.gd">api.gd</a>) with session refresh, <code>X-Device</code> and <code>X-Client</code> headers.</li>
+              <li>Create <code>accounts</code>; store the old <code>player_id</code> and <code>cloud_user</code> in <code>legacy_*</code> columns at first login so old board rows stay attached to their owner.</li>
+              <li>Optional: link the Epic account the game already initializes through EOS, so a name cannot be taken twice.</li>
+            </ol>
+            <p class="done"><b>Done when</b> every call carries a JWT and no RPC uses <code>p_player</code> or <code>p_secret</code> as proof of identity.</p>
+          </div>
+        </article>
+
+        <article class="ph">
+          <div class="tag"><b>2</b><span>Server profile</span></div>
+          <div class="body">
+            <h3>The profile moves to Postgres</h3>
+            <ol>
+              <li>Create <code>profiles</code> and <code>ledger</code>; deploy <code>GET /profile</code> and <code>POST /profile/actions</code>.</li>
+              <li>Port the pricing and rules behind <code>spend</code>, <code>fuse_card</code>, <code>set_eternal</code>, <code>unlock_class</code>, <code>set_class_stats</code>, <code>toggle_pact</code>, <code>claim_achievement</code> into <code>actions.ts</code>, reading the same <code>GameData</code> tables (export them to JSON at build time so client and server never drift).</li>
+              <li>Turn <code>Save.data</code> into a read-only cache that adopts the server profile (<a href="/midgard/code/godot/save_and_world_changes.gd">save_and_world_changes.gd</a>). <code>flush()</code> keeps device settings only.</li>
+              <li>Retire <code>cloud_put</code> / <code>cloud_get</code> and the conflict dialog; there is one copy now.</li>
+            </ol>
+            <p class="done"><b>Done when</b> editing <code>profile.json</code> changes nothing after a restart.</p>
+          </div>
+        </article>
+
+        <article class="ph">
+          <div class="tag"><b>3</b><span>Run tickets</span></div>
+          <div class="body">
+            <h3>Runs start and end on the server</h3>
+            <ol>
+              <li>Deploy <code>/runs</code>, <code>/checkpoint</code>, <code>/finish</code>, <code>/snapshot</code>, <code>/suspend</code>, <code>/resume</code>.</li>
+              <li><code>World.start_run</code> requests a ticket and builds the hero from the returned loadout; the run RNG is seeded from <code>ticket.seed</code>.</li>
+              <li>Add the 60 s heartbeat and event checkpoints (boss kill, stage change, tower floor, Emperium break).</li>
+              <li><code>_end_run</code> / <code>_bank_run</code> stop writing <code>Save</code>; <code>computeRewards</code> on the server mirrors <code>add_class_xp</code>, ore and zeny rules, and <code>DAILY_FIRST_BONUS</code>.</li>
+              <li>Boards are written only inside <code>/finish</code>. Revoke <code>submit_record</code>, <code>submit_tower</code>, <code>submit_festival</code> for the anon role.</li>
+            </ol>
+            <p class="done"><b>Done when</b> a direct RPC call cannot create a board row and a run without a ticket grants nothing.</p>
+          </div>
+        </article>
+
+        <article class="ph">
+          <div class="tag"><b>4</b><span>Validation</span></div>
+          <div class="body">
+            <h3>Rules, review queue, enforcement</h3>
+            <ol>
+              <li>Ship <a href="/midgard/code/supabase/functions/api/validator.ts">validator.ts</a> with every rule at <code>review</code>. Calibrate thresholds from <code>log_run_metrics</code> history (p99.9 per class, stage and danger).</li>
+              <li>Build a small admin page over <code>flags</code> (confirm / clear) and the podium <code>pending_review</code> queue.</li>
+              <li>Promote rules to <code>reject</code> once false positives are below an agreed rate; enable shadow flags, then bans with human confirmation.</li>
+            </ol>
+            <p class="done"><b>Done when</b> the top of every board has been reviewed and the flag queue is worked weekly.</p>
+          </div>
+        </article>
+
+        <article class="ph">
+          <div class="tag"><b>5</b><span>Cutover</span></div>
+          <div class="body">
+            <h3>Import old saves, then go online-only</h3>
+            <ol>
+              <li>Ship a client that uploads the local profile once to <code>POST /migrate</code> (see the next section).</li>
+              <li>Raise <code>MIN_CLIENT</code> so older builds receive <code>426</code>.</li>
+              <li>Remove the local progression code paths and the <code>SAVE_KEY</code>-encrypted profile file. Offline play becomes practice mode.</li>
+              <li>Archive the old boards as "Legacy season" and start a fresh, validated season.</li>
+            </ol>
+            <p class="done"><b>Done when</b> no supported client can change progression without the API.</p>
+          </div>
+        </article>
+
+        <article class="ph">
+          <div class="tag"><b>6</b><span>Optional</span></div>
+          <div class="body">
+            <h3>Loot tickets and replays</h3>
+            <ol>
+              <li><b>Loot tickets:</b> the server pre-rolls rare drops for each checkpoint window with an HMAC of <code>run_secrets.loot_key</code> and sends signed tokens. The client may only claim drops it was issued, so card and MVP-drop farming through memory edits stops working.</li>
+              <li><b>Replays for the podium:</b> record seed plus inputs for top runs only, and add a deterministic mode (fixed timestep, seeded RNG everywhere) so a reviewer can watch the run.</li>
+            </ol>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ========================================================== MIGRATION -->
+    <section id="migration">
+      <header>
+        <span class="eyebrow">Delivery</span>
+        <h2>Migrating existing saves</h2>
+        <p class="muted">Players keep their progress. Saves that cannot be explained by play time are kept too, but do not reach the new boards.</p>
+      </header>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Check on import</th><th>Uses fields already in the save</th><th>On failure</th></tr></thead>
+          <tbody>
+            <tr><td>Zeny earned per hour played</td><td><code>stats.zeny_earned</code>, <code>stats.play_time</code></td><td>quarantine</td></tr>
+            <tr><td>Balance never above lifetime earnings</td><td><code>zeny</code>, <code>stats.zeny_earned</code>, <code>stats.zeny_spent</code></td><td>quarantine</td></tr>
+            <tr><td>Cards owned vs cards found</td><td><code>cards</code>, <code>stats.cards_found</code>, <code>card_misses</code></td><td>quarantine</td></tr>
+            <tr><td>Class level vs runs and kills</td><td><code>classes.*.level</code>, <code>stats.runs</code>, <code>stats.kills</code></td><td>quarantine</td></tr>
+            <tr><td>Equipment within game limits</td><td>refine ≤ max, card slots ≤ item slots, legal card per slot, unique-equip rules</td><td>clamp the item, log it</td></tr>
+            <tr><td>Unknown ids</td><td>items, cards, pets, pacts not present in <code>GameData</code></td><td>drop the entry, log it</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="plain">
+        <li>Accepted saves get <code>origin = legacy_verified</code>. Quarantined ones get <code>legacy_quarantined</code>: fully playable, rewards work, but runs stay unranked until a review or until the account earns enough validated play.</li>
+        <li>The import is a one-time call per account, written to the ledger as one <code>migration</code> row, so it can be audited or reversed.</li>
+        <li>Allow import for a limited window (for example 60 days); after that, new installs start fresh.</li>
+      </ul>
+    </section>
+
+    <!-- ================================================================= UX -->
+    <section id="ux">
+      <header>
+        <span class="eyebrow">Delivery</span>
+        <h2>What changes for players</h2>
+      </header>
+      <div class="split">
+        <div>
+          <h3>Better than today</h3>
+          <ul>
+            <li>One save, on every device. The "which save do you keep?" dialog (<span class="ref">cloud_save.gd:471</span>) disappears.</li>
+            <li>Quit mid-run on PC, continue on the web build.</li>
+            <li>Leaderboards that players can believe.</li>
+            <li>Lost device or reinstall: log in, everything is there.</li>
+          </ul>
+        </div>
+        <div>
+          <h3>Costs to soften</h3>
+          <ul>
+            <li>No connection at start: the run is a <b>practice run</b>, with a clear banner that it grants nothing.</li>
+            <li>Connection lost mid-run: the run continues; checkpoints and the finish wait in the queue and send when the connection returns (48 h grace).</li>
+            <li>Server maintenance: menus open read-only from the cache, with the maintenance message from <code>503</code>.</li>
+            <li>Commands in menus wait for a round trip; show the new value only after the response.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- =============================================================== COOP -->
+    <section id="coop">
+      <header>
+        <span class="eyebrow">Delivery</span>
+        <h2>Co-op runs</h2>
+      </header>
+      <ul class="plain">
+        <li>Co-op stays peer-to-peer over EOS with the host simulating (<span class="ref">net_sync.gd:247 is_host</span>, <span class="ref">:854 host_tick</span>). The server does not need to see gameplay traffic.</li>
+        <li>The host creates a <code>party_id</code>; every member requests their own ticket with it, so each member's loadout comes from their own server profile.</li>
+        <li>Each member sends checkpoints and a finish. The validator compares them: shared counters (time, kills, stage, Emperium breaks) must agree within a small tolerance, and the party board row is written only when the members agree.</li>
+        <li>Co-op is the one place where <code>RunSave</code> is already disabled (<span class="ref">run_save.gd:44</span>), so suspend/resume stays solo-only.</li>
+      </ul>
+    </section>
+
+    <!-- ============================================================== RISKS -->
+    <section id="risks">
+      <header>
+        <span class="eyebrow">Delivery</span>
+        <h2>Trade-offs and limits</h2>
+      </header>
+      <div class="tbl">
+        <table>
+          <thead><tr><th>Topic</th><th>Assessment</th></tr></thead>
+          <tbody>
+            <tr><td>Server cost</td><td>About 3 requests at start and end, plus 1 per minute of play. A 30-minute run is ~35 small requests. Edge Functions and Postgres on the current Supabase plan handle this volume without changes.</td></tr>
+            <tr><td>Latency</td><td>None in combat. Menus wait one round trip per purchase.</td></tr>
+            <tr><td>What it does not stop</td><td>A modified client can still play better than a human inside plausible limits (auto-aim, auto-pick). Validation narrows the window; podium review and replays (phase 6) cover the top of the boards, where it matters.</td></tr>
+            <tr><td>False positives</td><td>Real builds reach extreme numbers (Festival entries above 10<sup>25</sup> damage are legitimate). Rules must be relative to stage, danger and loadout, start at review, and bans need a human.</td></tr>
+            <tr><td>Balance patches</td><td>Rules that use game constants must read them from the same exported <code>GameData</code> JSON the server uses for prices, versioned with the client.</td></tr>
+            <tr><td>Privacy</td><td>Stores an account id, an optional name, a random device id and gameplay data. No email is required.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- =============================================================== CODE -->
+    <section id="code">
+      <header>
+        <span class="eyebrow">Reference code</span>
+        <h2>Files that come with this proposal</h2>
+        <p class="muted">Sketches written against the current code layout. They show the shape and the important checks; they are not drop-in files.</p>
+      </header>
+      <div class="files">
+        <a class="file" href="/midgard/code/supabase/001_schema.sql"><b>supabase/001_schema.sql</b><span>Tables, RLS read-own policies, public board view, legacy RPC lockdown.</span></a>
+        <a class="file" href="/midgard/code/supabase/functions/api/index.ts"><b>supabase/functions/api/index.ts</b><span>Router, auth, version gate, actions, run start, checkpoint, finish.</span></a>
+        <a class="file" href="/midgard/code/supabase/functions/api/validator.ts"><b>supabase/functions/api/validator.ts</b><span>Timing, monotonic, plausibility, Festival, consistency and history rules.</span></a>
+        <a class="file" href="/midgard/code/godot/api.gd"><b>godot/api.gd</b><span>New autoload: session, requests, ticket, checkpoint batching, durable finish queue.</span></a>
+        <a class="file" href="/midgard/code/godot/save_and_world_changes.gd"><b>godot/save_and_world_changes.gd</b><span>Edits to save.gd, main.gd, festival_run.gd, run_save.gd and updater.gd.</span></a>
+      </div>
+      <div class="codebox">
+        <div class="bar"><a href="/midgard/code/godot/api.gd">godot/api.gd</a><button type="button" data-copy="c-gd">Copy</button></div>
+<pre id="c-gd"><span class="k">func</span> start_run(opts: Dictionary) -&gt; Dictionary:
+	<span class="k">var</span> key := Crypto.new().generate_random_bytes(8).hex_encode() + str(Time.get_ticks_msec())
+	<span class="k">for</span> attempt <span class="k">in</span> 3:
+		<span class="k">var</span> r := <span class="k">await</span> req(<span class="s">'/runs'</span>, HTTPClient.METHOD_POST, opts.merged({<span class="s">'key'</span>: key}))
+		<span class="k">if</span> r.ok:
+			_ticket = r.data          <span class="cm"># {id, seed, loadout, ranked}</span>
+			<span class="k">return</span> r
+		<span class="k">if not</span> r.offline:
+			<span class="k">return</span> r
+		<span class="k">await</span> get_tree().create_timer((0.5 + randf() * 1.5) * (attempt + 1)).timeout
+<span class="hl">	<span class="cm"># Online-only: no ticket means a practice run that grants nothing.</span></span>
+	_ticket = {}
+	<span class="k">return</span> {<span class="s">'ok'</span>: <span class="k">false</span>, <span class="s">'offline'</span>: <span class="k">true</span>, <span class="s">'practice'</span>: <span class="k">true</span>}</pre>
+      </div>
+    </section>
+
+    <footer>
+      <span>Prepared as a suggestion for the MidgardSurvivors developer, based on the public 0.1.276 build and on Pokébonk's public client and API behaviour.</span>
+      <span>Secrets found in the client (save key, patch key, API key) are referenced by name only. Rotate them as part of phase 5, since every current install already contains them.</span>
+    </footer>
+  </main>
+</div>
+
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var el = document.getElementById(btn.getAttribute('data-copy'));
+    if (!el) return;
+    var text = el.innerText;
+    var done = function () { btn.textContent = 'Copied'; setTimeout(function () { btn.textContent = 'Copy'; }, 1600); };
+    var fallback = function () {
+      var r = document.createRange(); r.selectNodeContents(el);
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      btn.textContent = 'Selected';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1600);
+    };
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback);
+      else fallback();
+    } catch (e) { fallback(); }
+  });
+});
+</script>
+
+</body>
+</html>
